@@ -9,8 +9,6 @@ raw_query = Olympian.objects.raw('''
         name, team, age, sport,
         COUNT(medal) AS total_medals_won
         FROM api_olympian
-        WHERE
-            medal IS NOT NULL
         GROUP BY
             name, team, age, sport;
 ''')
@@ -20,18 +18,41 @@ class OlympianList(views.APIView):
         """
         Return either all or subsets of olympians
         """
-        olympians = raw_query # self.get_queryset()
+        olympians = self.get_queryset()
 
         serializer = OlympianSerializer(olympians, many=True)
         return Response({'olympians': serializer.data})
 
-    # def get_queryset(self):
-    #     """
-    #     Optionally restricts the returned purchases to a given user,
-    #     by filtering against a `username` query parameter in the URL.
-    #     """
-    #     queryset = raw_query
-    #     username = self.request.query_params.get('username', None)
-    #     if username is not None:
-    #         queryset = queryset.filter(purchaser__username=username)
-    #     return queryset
+    def get_queryset(self):
+        """
+        Optionally restricts the returned olympians,
+        by filtering against an `age` query parameter in the URL.
+        """
+        queryset = raw_query
+        age = self.request.query_params.get('age', None)
+        if age is not None:
+            if age == 'youngest':
+                queryset = Olympian.objects.raw("""
+                    SELECT *
+                        FROM
+                            (SELECT DENSE_RANK() OVER(ORDER BY age) AS id,
+                                name, team, age, sport,
+                                COUNT(medal) AS total_medals_won
+                                FROM api_olympian
+                                GROUP BY
+                                    name, team, age, sport) AS subq
+                        WHERE id = 1;
+                """)
+            elif age == 'oldest':
+                queryset = Olympian.objects.raw("""
+                    SELECT *
+                        FROM
+                            (SELECT DENSE_RANK() OVER(ORDER BY age DESC) AS id,
+                                name, team, age, sport,
+                                COUNT(medal) AS total_medals_won
+                                FROM api_olympian
+                                GROUP BY
+                                    name, team, age, sport) AS subq
+                        WHERE id = 1;
+                """)
+        return queryset
